@@ -3,13 +3,13 @@ import matplotlib.pyplot as plt
 import time
 import pickle
 from tqdm import tqdm
-
+from scipy.optimize import minimize_scalar
 
 def make_all_r(start=1, end=2, step_size=0.01, dec=2):
     """a function that returns an array with all the possible stopping times for the adv"""
     optimal_times = np.arange(start, end, step_size)
     optimal_times = np.append(optimal_times, end)
-    optimal_times = np.round_(optimal_times, decimals=dec)
+    optimal_times = np.round(optimal_times, decimals=dec)
     return optimal_times
 
 
@@ -32,13 +32,23 @@ def channel2_cap(p):
     return p/channel2_div
 
 
+
 def time_until_ones(r):
     """
     this funcion gets the time it takes for the adv to finish and
     returns the time where we would get 1's for the first time
     """
-    return 2*r-2
+    return r-calc_alpha(r)
 
+
+def calc_alpha(r):
+    """
+
+    param r: the time the adv will finish the game 
+    return: the number of 1's we will have until time r
+    """
+    global channel2_div
+    return (1-r)/(channel2_div-1) +1 
 
 def calc_gain(channel, p, time):
     """
@@ -67,6 +77,8 @@ def calc_regret(player_strats, optimal_times):
     :param optimal_times: a list of all the options the adv can finish the game in
     :return: the worst regret you can have with both
     """
+    global channel2_div
+    equality_prob = channel2_div / (channel2_div+1)
     regret = -np.inf
     worst_r = 1
     for optimal_time in optimal_times:
@@ -75,8 +87,6 @@ def calc_regret(player_strats, optimal_times):
         twos = time_until_ones(optimal_time)
         finished = False
         for (swich_time, p) in player_strats:
-            # if optimal_time == 1.72:
-            #     print(optimal_time)
             if twos > swich_time:
                 trasmited += calc_gain(2, p, swich_time - time)
                 time = swich_time
@@ -100,15 +110,12 @@ def calc_regret(player_strats, optimal_times):
                 if regret < time + ttf - optimal_time:
                     regret = time + ttf - optimal_time
                     worst_r = optimal_time
-                    # print(f"r: {optimal_time} ,regret :{regret}")
                     finished = True
-        print(f"r: {optimal_time} ,regret :{regret}")
         if not finished:
-            ttf = time_to_finish(2 / 3, trasmited)
+            ttf = time_to_finish(equality_prob, trasmited)
             if regret < time + ttf - optimal_time:
                 regret = time + ttf - optimal_time
                 worst_r = optimal_time
-                # print(f"r: {optimal_time} ,regret :{regret}")
     return regret, worst_r
 
 
@@ -353,6 +360,16 @@ def generate_arrays(start, my_range, step, mid, end, dec = 3):
         result.append([start, np.round_(first + x * step, decimals=dec), mid, end])
         x += 1
     return result
+    
+
+def generate_arrays_p2( my_range, step, end, dec = 3):
+    result = []
+    first, second = sorted(my_range)
+    x = 0
+    while first + x * step < second:
+        result.append([np.round_(first + x * step, decimals=dec), end])
+        x += 1
+    return result
 
 def test_reg2(optimal_times):
     swich_times = [1.45,2]
@@ -361,56 +378,56 @@ def test_reg2(optimal_times):
     regret, worst_r = calc_regret(player_strats, optimal_times)
     print(f"regret: {regret} , worst_r : {worst_r}")
 
+
 if __name__ == '__main__':
-    channel2_div = 2 
-    optimal_times = make_all_r(start=1, end=2, step_size=0.001, dec=3)
+    channel2_div = 5
+    equality_prob = channel2_div / (channel2_div+1)
+    optimal_times = make_all_r(start=1, end=channel2_div, step_size=0.001, dec=3)
     size = 2
     divide_by_prob = 1000
-    start_value_prob = 1 / 4 * divide_by_prob
-    end_value_prob = 2 / 3 * divide_by_prob
+    start_value_prob = 1 / 2 * divide_by_prob
+    end_value_prob = equality_prob * divide_by_prob
     step = 0.005 * divide_by_prob
     divide_by_time = 100 
     start_time = 100 
-    # start_time = 140 
-    end_time = 200 
-    # end_time = 210
+    end_time = channel2_div * divide_by_time
     step_time = 5
     # swich_times = [1, 1.25, 1.5, 2]  # need to add one more for the last dist
     # swich_times = generate_arrays(1,(1.1,1.4),1.5,2)
-    all_probs = generate_prob_arrays(size, int(np.round_(start_value_prob)), int(np.round_(end_value_prob)), int(np.round_(step)), divide_by_prob)
+    all_probs = generate_prob_arrays(size, int(np.round_(start_value_prob)), int(np.round_(end_value_prob)), int(np.round_(step)), divide_by_prob,equality_prob)
     all_times = generate_time_arrays(size - 1, start=start_time, end=end_time, step=step_time, divide_by=divide_by_time)
-    # all_times = generate_arrays(1,(1,1.4),0.01,1.5,2, 3)
-    # print(len(all_probs))
-    # print("all times : ")
-    # print(all_times)
-    
-    # print(f"the size of all_times is : {len(all_times)}")
+    # all_times = generate_arrays_p2((1.99,2.01),0.01,3, 2)
+    print(len(all_probs))
+    print("all times : ")
+    print(all_times)   
+    print(f"the size of all_times is : {len(all_times)}")
 
-    # start = time.time()
-    # best_probabilities_time, best_regret_time, maching_r_time, best_swiches = find_best_time_prob(all_probs, all_times)
-    # end = time.time()
-    # print(f"Execution time of regret{size} is : {end - start}" )
-
-
+    #Regret 
     start = time.time()
-    best_probabilities_time, best_regret_time, maching_r_time, best_swiches = find_best_time_prob_cr(all_probs, all_times)
+    best_probabilities_time, best_regret_time, maching_r_time, best_swiches = find_best_time_prob(all_probs, all_times)
     end = time.time()
-    print(f"Execution time of comp ratio{size} is : {end - start}")
+    print(f"Execution time of regret{size} is : {end - start}" )
+
+    #CR not working at the moment :(
+    # start = time.time()
+    # best_probabilities_time, best_regret_time, maching_r_time, best_swiches = find_best_time_prob_cr(all_probs, all_times)
+    # end = time.time()
+    # print(f"Execution time of comp ratio{size} is : {end - start}")
 
     # save result
-    # store_variable(best_probabilities_time,"best_probabilities_time.pkl")
-    # store_variable(best_regret_time, "best_regret_time.pkl")
-    # store_variable(maching_r_time, "maching_r_time.pkl")
-    # store_variable(best_swiches, "best_swiches.pkl")
+    store_variable(best_probabilities_time,f"best_probabilities_time_{channel2_div}_{size}.pkl")
+    store_variable(best_regret_time, f"best_regret_time_{channel2_div}_{size}.pkl")
+    store_variable(maching_r_time, f"maching_r_time_{channel2_div}_{size}.pkl")
+    store_variable(best_swiches, f"best_swiches_{channel2_div}_{size}.pkl")
 
     # load previous result
-    # best_probabilities_time = load_variable('best_probabilities_time.pkl')
-    # print("best_probabilities_time :", best_probabilities_time)
-    # best_regret_time = load_variable('best_regret_time.pkl')
-    # print("best_regret_time :", best_regret_time)
-    # maching_r_time = load_variable('maching_r_time.pkl')
-    # print("maching_r_time :", maching_r_time)
-    # best_swiches = load_variable('best_swiches.pkl')
-    # print("best_swiches :", best_swiches)
+    best_probabilities_time = load_variable(f"best_probabilities_time_{channel2_div}_{size}.pkl")
+    print("best_probabilities_time :", best_probabilities_time)
+    best_regret_time = load_variable(f"best_regret_time_{channel2_div}_{size}.pkl")
+    print("best_regret_time :", best_regret_time)
+    maching_r_time = load_variable(f"maching_r_time_{channel2_div}_{size}.pkl")
+    print("maching_r_time :", maching_r_time)
+    best_swiches = load_variable(f"best_swiches_{channel2_div}_{size}.pkl")
+    print("best_swiches :", best_swiches)
 
 
